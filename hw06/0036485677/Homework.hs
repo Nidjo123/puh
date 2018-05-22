@@ -1,0 +1,194 @@
+module Homework where
+--
+import Data.List
+import Data.Char
+import Data.Time.Clock ( UTCTime(..) )
+import Data.Time.Calendar ( Day, gregorianMonthLength, fromGregorian, showGregorian )
+import Data.Time.Format ( formatTime, defaultTimeLocale )
+--
+
+-- Task 01
+data Pred = And Pred Pred
+          | Or Pred Pred
+          | Not Pred
+          | Val Bool
+
+-- test expr
+expr :: Pred
+expr = And (Or (Val True) (Not (Val True))) (Not (And (Val True) (Val False)))
+
+eval :: Pred -> Bool
+eval (Val v)   = v
+eval (Not p)   = not $ eval p
+eval (And p q) = eval p && eval q
+eval (Or p q) = eval p || eval q
+
+-- Task 02
+
+getMonth :: String -> Int
+getMonth = monthToInt . map toLower
+
+monthToInt :: String -> Int
+monthToInt "january"   = 1
+monthToInt "february"  = 2
+monthToInt "march"     = 3
+monthToInt "april"     = 4
+monthToInt "may"       = 5
+monthToInt "june"      = 6
+monthToInt "july"      = 7
+monthToInt "august"    = 8
+monthToInt "september" = 9 
+monthToInt "october"   = 10
+monthToInt "november"  = 11
+monthToInt "december"  = 12
+monthToInt _           = error "Unknown month"
+
+getDay :: String -> Int
+getDay = dayToInt . map toLower
+
+dayToInt :: String -> Int
+dayToInt "monday"    = 1
+dayToInt "tuesday"   = 2
+dayToInt "wednesday" = 3
+dayToInt "thursday"  = 4
+dayToInt "friday"    = 5
+dayToInt "saturday"  = 6
+dayToInt "sunday"    = 7
+dayToInt _           = error "Unknown day of the week"
+
+teenthToDay :: String -> String
+teenthToDay s
+  | "mo" `isPrefixOf` s' = "monday"
+  | "tu" `isPrefixOf` s' = "tuesday"
+  | "we" `isPrefixOf` s' = "wednesday"
+  | "th" `isPrefixOf` s' = "thursday"
+  | "fr" `isPrefixOf` s' = "friday"
+  | "sa" `isPrefixOf` s' = "saturday"
+  | "su" `isPrefixOf` s' = "sunday"
+  | otherwise            = error "Unknown -teenth day"
+  where
+    s' = map toLower s
+
+capitalize :: String -> String
+capitalize []     = []
+capitalize (x:xs) = toUpper x : xs
+    
+dayOfWeek :: Day -> String
+dayOfWeek = formatTime defaultTimeLocale "%A"
+
+dayOfDate :: Day -> Int
+dayOfDate d = read $ formatTime defaultTimeLocale "%e" d
+
+allDaysInMonthYear :: Int -> Integer -> [Day]
+allDaysInMonthYear month year = daysInMonth 1 month year
+  where
+    daysInMonth day month year
+      | day > numDays = []
+      | otherwise     = fromGregorian year month day : daysInMonth (day + 1) month year
+    numDays = gregorianMonthLength year month
+
+-- for example all mondays in january 2017
+possibleDays :: String -> Integer -> Int -> [Day]
+possibleDays day year month = filter ((== day) . dayOfWeek) $ allDaysInMonthYear month year
+
+getOrdDay :: String -> String -> String -> String -> Day
+getOrdDay modifier day month year = case map toLower modifier of
+  "first"  -> candidates !! 0
+  "second" -> candidates !! 1
+  "third"  -> candidates !! 2
+  "fourth" -> candidates !! 3
+  "teenth" -> (head . filter ((`elem` teens) . dayOfDate)) candidates
+  "last"   -> last candidates
+  where
+    candidates = possibleDays day (read year) (getMonth month)
+    teens      = [13..19]
+
+-- format "the first Monday of January 2017"
+-- or "the Wednesteenth of January 2017"
+dateFromDescription :: String -> Day
+dateFromDescription desc
+  | len == 6  = getOrdDay (parts !! 1) (capitalize $ parts !! 2) (parts !! 4) (parts !! 5)
+  | len == 5  = getOrdDay "teenth" (capitalize . teenthToDay $ parts !! 1) (parts !! 3) (parts !! 4)
+  | otherwise = error "Invalid description."
+  where
+    parts = splitter " " desc
+    len   = length parts
+    year  = (read $ last parts) :: Integer
+
+-- Task 03
+
+data Tree a
+  = Leaf | Node a (Tree a) (Tree a)
+  deriving (Eq, Show)
+
+testTree :: Tree Int
+testTree = Node 1 (Node 2 Leaf Leaf) (Node 3 (Node 4 Leaf Leaf) Leaf)
+
+-- a)
+treeFilter :: (a -> Bool) -> Tree a -> Tree a
+treeFilter _ Leaf = Leaf
+treeFilter p (Node n left right)
+  | p n       = (Node n (treeFilter p left) (treeFilter p right))
+  | otherwise = Leaf
+
+-- b)
+levelMap :: (Int -> a -> b) -> Tree a -> Tree b
+levelMap _ Leaf = Leaf
+levelMap f tree = levelMap' f 0 tree
+  where
+    levelMap' _ _ Leaf = Leaf
+    levelMap' f d (Node x left right) = (Node (f d x) (levelMap' f (d+1) left) (levelMap' f (d+1) right))
+
+-- c)
+
+isSubtree :: Eq a => Tree a -> Tree a -> Bool
+isSubtree Leaf _ = True -- Leaf is always subtree of any other tree
+isSubtree _ Leaf = False -- subtree is bigger than tree
+isSubtree subt t@(Node n left right) = check subt t || isSubtree subt left || isSubtree subt right
+  where
+    check (Node _ _ _) Leaf = False -- No, Leaf is not equal to Node
+    check Leaf (Node _ _ _) = False -- No, same as above
+    check Leaf Leaf         = True  -- Ok, Leaf is equal to Leaf
+    check (Node x l r) (Node x' l' r') -- Check if Nodes are equal
+      | x == x'   = check l l' && check r r' -- there's chance so check left and right subtrees
+      | otherwise = False -- Nodes are not equal, so it is not a subtree
+
+
+
+-- Task 04
+data Category = End | Category
+  { name     :: String
+  , children :: [Category]
+  }
+
+-- splitter from previous homework
+split :: Eq a => [a] -> a -> [[a]] -> [[a]]
+split d c acc = if null acc then [[c]] else case stripPrefix d $ head acc of
+                  Nothing -> (c : head acc) : tail acc
+                  Just s  -> [c] : s : tail acc
+
+finish :: Eq a => [a] -> [[a]] -> [[a]]
+finish d acc = case stripPrefix d $ head acc of
+                 Nothing -> acc
+                 Just s  -> [] : s : tail acc
+
+splitter :: Eq a => [a] -> [a] -> [[a]]
+splitter _ [] = []
+splitter d xs = finish d . foldr (split d) [] $ xs
+-- end splitter
+
+-- category delimiter
+delimiter :: String
+delimiter = " > "
+
+parseCategories :: [String] -> [Category]
+parseCategories = map parseCat
+
+parseCat :: String -> Category
+--parseCat [] = Category{}
+parseCat s  = undefined
+  where
+    names = splitter s delimiter
+  
+printCategories :: [Category] -> [String]
+printCategories = undefined
